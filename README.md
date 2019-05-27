@@ -1,88 +1,27 @@
-<img src="logo.png" width="356px">
+# snabbdom源码解析
 
-A virtual DOM library with focus on simplicity, modularity, powerful features
-and performance.
+[snabbdom](https://github.com/snabbdom/snabbdom)是一个虚拟dom算法库，它的特点是效率高、可扩展，Vue 虚拟DOM就是基于该库进行改造。snabbdom核心代码就几百行，但里面的一些设计非常优秀。
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-brightgreen.svg)](https://opensource.org/licenses/MIT) [![npm version](https://badge.fury.io/js/snabbdom.svg)](https://badge.fury.io/js/snabbdom) [![npm downloads](https://img.shields.io/npm/dm/snabbdom.svg)](https://www.npmjs.com/package/snabbdom)
+## 基本使用
 
-[![Join the chat at https://gitter.im/paldepind/snabbdom](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/paldepind/snabbdom?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
-
-## Table of contents
-
-* [Introduction](#introduction)
-* [Features](#features)
-* [Inline example](#inline-example)
-* [Examples](#examples)
-* [Core documentation](#core-documentation)
-* [Modules documentation](#modules-documentation)
-* [Helpers](#helpers)
-* [Virtual Node documentation](#virtual-node)
-* [Structuring applications](#structuring-applications)
-
-## Why
-
-Virtual DOM is awesome. It allows us to express our application's view
-as a function of its state. But existing solutions were way way too
-bloated, too slow, lacked features, had an API biased towards OOP
-and/or lacked features I needed.
-
-## Introduction
-
-Snabbdom consists of an extremely simple, performant and extensible
-core that is only ≈ 200 SLOC. It offers a modular architecture with
-rich functionality for extensions through custom modules. To keep the
-core simple, all non-essential functionality is delegated to modules.
-
-You can mold Snabbdom into whatever you desire! Pick, choose and
-customize the functionality you want. Alternatively you can just use
-the default extensions and get a virtual DOM library with high
-performance, small size and all the features listed below.
-
-## Features
-
-* Core features
-  * About 200 SLOC – you could easily read through the entire core and fully
-    understand how it works.
-  * Extendable through modules.
-  * A rich set of hooks available, both per vnode and globally for modules,
-    to hook into any part of the diff and patch process.
-  * Splendid performance. Snabbdom is among the fastest virtual DOM libraries
-    in the [Virtual DOM Benchmark](http://vdom-benchmark.github.io/vdom-benchmark/).
-  * Patch function with a function signature equivalent to a reduce/scan
-    function. Allows for easier integration with a FRP library.
-* Features in modules
-  * `h` function for easily creating virtual DOM nodes.
-  * [SVG _just works_ with the `h` helper](#svg).
-  * Features for doing complex CSS animations.
-  * Powerful event listener functionality.
-  * [Thunks](#thunks) to optimize the diff and patch process even further.
-* Third party features
-  * JSX support thanks to [snabbdom-pragma](https://github.com/Swizz/snabbdom-pragma).
-  * Server-side HTML output provided by [snabbdom-to-html](https://github.com/acstll/snabbdom-to-html).
-  * Compact virtual DOM creation with [snabbdom-helpers](https://github.com/krainboltgreene/snabbdom-helpers).
-  * Template string support using [snabby](https://github.com/jamen/snabby).
-  * Virtual DOM assertion with [snabbdom-looks-like](https://github.com/jvanbruegge/snabbdom-looks-like)
-
-## Inline example
-
-```javascript
+``` js
 var snabbdom = require('snabbdom');
-var patch = snabbdom.init([ // Init patch function with chosen modules
-  require('snabbdom/modules/class').default, // makes it easy to toggle classes
+// 选择modules（可以理解为插件），返回patch方法
+var patch = snabbdom.init([、
   require('snabbdom/modules/props').default, // for setting properties on DOM elements
   require('snabbdom/modules/style').default, // handles styling on elements with support for animations
   require('snabbdom/modules/eventlisteners').default, // attaches event listeners
 ]);
-var h = require('snabbdom/h').default; // helper function for creating vnodes
 
+var h = require('snabbdom/h').default; // 帮助创建vnode实例
 var container = document.getElementById('container');
-
 var vnode = h('div#container.two.classes', {on: {click: someFn}}, [
   h('span', {style: {fontWeight: 'bold'}}, 'This is bold'),
   ' and this is just normal text',
   h('a', {props: {href: '/foo'}}, 'I\'ll take you places!')
 ]);
-// Patch into empty DOM element – this modifies the DOM as a side effect
+
+// vnode挂载到指定container下
 patch(container, vnode);
 
 var newVnode = h('div#container.two.classes', {on: {click: anotherEventHandler}}, [
@@ -90,669 +29,296 @@ var newVnode = h('div#container.two.classes', {on: {click: anotherEventHandler}}
   ' and this is still just normal text',
   h('a', {props: {href: '/bar'}}, 'I\'ll take you places!')
 ]);
-// Second `patch` invocation
-patch(vnode, newVnode); // Snabbdom efficiently updates the old view to the new state
+// 对比vnode，并更新node
+patch(vnode, newVnode);
 ```
 
-## Examples
+## 基本数据结构
 
-* [Animated reordering of elements](http://snabbdom.github.io/snabbdom/examples/reorder-animation/)
-* [Hero transitions](http://snabbdom.github.io/snabbdom/examples/hero/)
-* [SVG Carousel](http://snabbdom.github.io/snabbdom/examples/carousel-svg/)
+``` js
+// VNode数据结构
+export interface VNode {
+  sel: string | undefined; // 选择器
+  data: VNodeData | undefined; // 保存属性、样式、事件等
+  children: Array<VNode | string> | undefined; //  子节点
+  elm: Node | undefined; //  对应的真实dom节点
+  text: string | undefined; //  文本节点
+  key: Key | undefined; // 唯一key
+}
 
-## Core documentation
-
-The core of Snabbdom provides only the most essential functionality.
-It is designed to be as simple as possible while still being fast and
-extendable.
-
-### `snabbdom.init`
-
-The core exposes only one single function `snabbdom.init`. This `init`
-takes a list of modules and returns a `patch` function that uses the
-specified set of modules.
-
-```javascript
-var patch = snabbdom.init([
-  require('snabbdom/modules/class').default,
-  require('snabbdom/modules/style').default,
-]);
+// VNodeData数据格式
+export interface VNodeData {
+  props?: Props; // 设置el对象上属性，不会反馈到html标签上
+  attrs?: Attrs; // 设置el上的atrrs，会反馈到html标签上
+  class?: Classes; // css class
+  style?: VNodeStyle; // css style
+  dataset?: Dataset; // html dataset
+  on?: On; // 事件
+  hero?: Hero;
+  attachData?: AttachData;
+  hook?: Hooks;
+  key?: Key;
+  ns?: string; // for SVGs
+  fn?: () => VNode; // for thunks
+  args?: Array<any>; // for thunks
+  [key: string]: any; // for any other 3rd party module
+}
 ```
 
-### `patch`
+## 核心源码
 
-The `patch` function returned by `init` takes two arguments. The first
-is a DOM element or a vnode representing the current view. The second
-is a vnode representing the new, updated view.
+`在初始化init时，注入一些内置的modules模块`，比如处理dom event的eventlisteners.ts、处理html class的class.ts。往后在虚拟DOM patch时，会在合适的时间触发modules的回调函数。内置的modules源码都放在src/modules文件夹下。
 
-If a DOM element with a parent is passed, `newVnode` will be turned
-into a DOM node, and the passed element will be replaced by the
-created DOM node. If an old vnode is passed, Snabbdom will efficiently
-modify it to match the description in the new vnode.
+初始化init返回patch方法，帮助diff vdom并更新真实的dom，它分两种参数传递：
+1. `参数传递Node和VNode`。此时会把VNode渲染成真实的DOM并插入到Node节点里面。
+2. `参数传递VNode和VNode`。如果两者VNode不等（此时的不等理解为：oldVNode.key !== newNode.key || oldVNode.sel !== newNode.sel），则参照上面规则：新的DOM插入以及老的DOM销毁。如果两者VNode相等，则需要diff vdom，详细看下面。
 
-Any old vnode passed must be the resulting vnode from a previous call
-to `patch`. This is necessary since Snabbdom stores information in the
-vnode. This makes it possible to implement a simpler and more
-performant architecture. This also avoids the creation of a new old
-vnode tree.
+src/snabbdom.ts：
 
-```javascript
-patch(oldVnode, newVnode);
-```
+``` js
+const hooks: (keyof Module)[] = ['create', 'update', 'remove', 'destroy', 'pre', 'post'];
 
-### `snabbdom/h`
-
-It is recommended that you use `snabbdom/h` to create vnodes. `h` accepts a
-tag/selector as a string, an optional data object and an optional string or
-array of children.
-
-```javascript
-var h = require('snabbdom/h').default;
-var vnode = h('div', {style: {color: '#000'}}, [
-  h('h1', 'Headline'),
-  h('p', 'A paragraph'),
-]);
-```
-
-### `snabbdom/tovnode`
-
-Converts a DOM node into a virtual node. Especially good for patching over an pre-existing, 
-server-side generated content.
-
-```javascript
-var snabbdom = require('snabbdom')
-var patch = snabbdom.init([ // Init patch function with chosen modules
-  require('snabbdom/modules/class').default, // makes it easy to toggle classes
-  require('snabbdom/modules/props').default, // for setting properties on DOM elements
-  require('snabbdom/modules/style').default, // handles styling on elements with support for animations
-  require('snabbdom/modules/eventlisteners').default, // attaches event listeners
-]);
-var h = require('snabbdom/h').default; // helper function for creating vnodes
-var toVNode = require('snabbdom/tovnode').default;
-
-var newVNode = h('div', {style: {color: '#000'}}, [
-  h('h1', 'Headline'),
-  h('p', 'A paragraph'),
-]);
-
-patch(toVNode(document.querySelector('.container')), newVNode)
-
-```
-
-### Hooks
-
-Hooks are a way to hook into the lifecycle of DOM nodes. Snabbdom
-offers a rich selection of hooks. Hooks are used both by modules to
-extend Snabbdom, and in normal code for executing arbitrary code at
-desired points in the life of a virtual node.
-
-#### Overview
-
-| Name        | Triggered when                                     | Arguments to callback   |
-| ----------- | --------------                                     | ----------------------- |
-| `pre`       | the patch process begins                           | none                    |
-| `init`      | a vnode has been added                             | `vnode`                 |
-| `create`    | a DOM element has been created based on a vnode    | `emptyVnode, vnode`     |
-| `insert`    | an element has been inserted into the DOM          | `vnode`                 |
-| `prepatch`  | an element is about to be patched                  | `oldVnode, vnode`       |
-| `update`    | an element is being updated                        | `oldVnode, vnode`       |
-| `postpatch` | an element has been patched                        | `oldVnode, vnode`       |
-| `destroy`   | an element is directly or indirectly being removed | `vnode`                 |
-| `remove`    | an element is directly being removed from the DOM  | `vnode, removeCallback` |
-| `post`      | the patch process is done                          | none                    |
-
-The following hooks are available for modules: `pre`, `create`,
-`update`, `destroy`, `remove`, `post`.
-
-The following hooks are available in the `hook` property of individual
-elements: `init`, `create`, `insert`, `prepatch`, `update`,
-`postpatch`, `destroy`, `remove`.
-
-#### Usage
-
-To use hooks, pass them as an object to `hook` field of the data
-object argument.
-
-```javascript
-h('div.row', {
-  key: movie.rank,
-  hook: {
-    insert: (vnode) => { movie.elmHeight = vnode.elm.offsetHeight; }
+export function init(modules: Array<Partial<Module>>, domApi?: DOMAPI) {
+  /**
+  init绑定module hooks事件，并等待patch时，在合适时间触发
+  cbs = {
+      create: [styleCreateHook, eventCreateHook, ...],
+      update: [styleUpateHook, eventUpateHook, ...]
   }
-});
-```
-
-#### The `init` hook
-
-This hook is invoked during the patch process when a new virtual node
-has been found. The hook is called before Snabbdom has processed the
-node in any way. I.e., before it has created a DOM node based on the
-vnode.
-
-#### The `insert` hook
-
-This hook is invoked once the DOM element for a vnode has been
-inserted into the document _and_ the rest of the patch cycle is done.
-This means that you can do DOM measurements (like using
-[getBoundingClientRect](https://developer.mozilla.org/en-US/docs/Web/API/Element/getBoundingClientRect)
-in this hook safely, knowing that no elements will be changed
-afterwards that could affect the position of the inserted elements.
-
-#### The `remove` hook
-
-Allows you to hook into the removal of an element. The hook is called
-once a vnode is to be removed from the DOM. The handling function
-receives both the vnode and a callback. You can control and delay the
-removal with the callback. The callback should be invoked once the
-hook is done doing its business, and the element will only be removed
-once all `remove` hooks have invoked their callback.
-
-The hook is only triggered when an element is to be removed from its
-parent – not if it is the child of an element that is removed. For
-that, see the `destroy` hook.
-
-#### The `destroy` hook
-
-This hook is invoked on a virtual node when its DOM element is removed
-from the DOM or if its parent is being removed from the DOM.
-
-To see the difference between this hook and the `remove` hook,
-consider an example.
-
-```js
-var vnode1 = h('div', [h('div', [h('span', 'Hello')])]);
-var vnode2 = h('div', []);
-patch(container, vnode1);
-patch(vnode1, vnode2);
-```
-
-Here `destroy` is triggered for both the inner `div` element _and_ the
-`span` element it contains. `remove`, on the other hand, is only
-triggered on the `div` element because it is the only element being
-detached from its parent.
-
-You can, for instance, use `remove` to trigger an animation when an
-element is being removed and use the `destroy` hook to additionally
-animate the disappearance of the removed element's children.
-
-### Creating modules
-
-Modules works by registering global listeners for [hooks](#hooks). A module is simply a dictionary mapping hook names to functions.
-
-```javascript
-var myModule = {
-  create: function(oldVnode, vnode) {
-    // invoked whenever a new virtual node is created
-  },
-  update: function(oldVnode, vnode) {
-    // invoked whenever a virtual node is updated
-  }
-};
-```
-
-With this mechanism you can easily augment the behaviour of Snabbdom.
-For demonstration, take a look at the implementations of the default
-modules.
-
-## Modules documentation
-
-This describes the core modules. All modules are optional.
-
-### The class module
-
-The class module provides an easy way to dynamically toggle classes on
-elements. It expects an object in the `class` data property. The
-object should map class names to booleans that indicates whether or
-not the class should stay or go on the vnode.
-
-```javascript
-h('a', {class: {active: true, selected: false}}, 'Toggle');
-```
-
-### The props module
-
-Allows you to set properties on DOM elements.
-
-```javascript
-h('a', {props: {href: '/foo'}}, 'Go to Foo');
-```
-
-### The attributes module
-
-Same as props, but set attributes instead of properties on DOM elements.
-
-```javascript
-h('a', {attrs: {href: '/foo'}}, 'Go to Foo');
-```
-
-Attributes are added and updated using `setAttribute`. In case of an
-attribute that had been previously added/set and is no longer present
-in the `attrs` object, it is removed from the DOM element's attribute
-list using `removeAttribute`.
-
-In the case of boolean attributes (e.g. `disabled`, `hidden`,
-`selected` ...), the meaning doesn't depend on the attribute value
-(`true` or `false`) but depends instead on the presence/absence of the
-attribute itself in the DOM element. Those attributes are handled
-differently by the module: if a boolean attribute is set to a
-[falsy value](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Boolean)
-(`0`, `-0`, `null`, `false`,`NaN`, `undefined`, or the empty string
-(`""`)), then the attribute will be removed from the attribute list of
-the DOM element.
-
-### The dataset module
-
-Allows you to set custom data attributes (`data-*`) on DOM elements. These can then be accessed with the [HTMLElement.dataset](https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/dataset) property.
-
-```javascript
-h('button', {dataset: {action: 'reset'}}, 'Reset');
-```
-
-### The style module
-
-The style module is for making your HTML look slick and animate smoothly. At
-its core it allows you to set CSS properties on elements.
-
-```javascript
-h('span', {
-  style: {border: '1px solid #bada55', color: '#c0ffee', fontWeight: 'bold'}
-}, 'Say my name, and every colour illuminates');
-```
-
-Note that the style module does not remove style attributes if they
-are removed as properties from the style object. To remove a style,
-you should instead set it to the empty string.
-
-```javascript
-h('div', {
-  style: {position: shouldFollow ? 'fixed' : ''}
-}, 'I, I follow, I follow you');
-```
-
-#### Custom properties (CSS variables)
-
-CSS custom properties (aka CSS variables) are supported, they must be prefixed
-with `--`
-
-```javascript
-h('div', {
-  style: {'--warnColor': 'yellow'}
-}, 'Warning');
-```
-
-#### Delayed properties
-
-You can specify properties as being delayed. Whenever these properties
-change, the change is not applied until after the next frame.
-
-```javascript
-h('span', {
-  style: {opacity: '0', transition: 'opacity 1s', delayed: {opacity: '1'}}
-}, 'Imma fade right in!');
-```
-
-This makes it easy to declaratively animate the entry of elements.
-
-#### Set properties on `remove`
-
-Styles set in the `remove` property will take effect once the element
-is about to be removed from the DOM. The applied styles should be
-animated with CSS transitions. Only once all the styles are done
-animating will the element be removed from the DOM.
-
-```javascript
-h('span', {
-  style: {opacity: '1', transition: 'opacity 1s',
-          remove: {opacity: '0'}}
-}, 'It\'s better to fade out than to burn away');
-```
-
-This makes it easy to declaratively animate the removal of elements.
-
-#### Set properties on `destroy`
-
-```javascript
-h('span', {
-  style: {opacity: '1', transition: 'opacity 1s',
-          destroy: {opacity: '0'}}
-}, 'It\'s better to fade out than to burn away');
-```
-
-### Eventlisteners module
-
-The event listeners module gives powerful capabilities for attaching
-event listeners.
-
-You can attach a function to an event on a vnode by supplying an
-object at `on` with a property corresponding to the name of the event
-you want to listen to. The function will be called when the event
-happens and will be passed the event object that belongs to it.
-
-```javascript
-function clickHandler(ev) { console.log('got clicked'); }
-h('div', {on: {click: clickHandler}});
-```
-
-Very often, however, you're not really interested in the event object
-itself. Often you have some data associated with the element that
-triggers an event and you want that data passed along instead.
-
-Consider a counter application with three buttons, one to increment
-the counter by 1, one to increment the counter by 2 and one to
-increment the counter by 3. You don't really care exactly which button
-was pressed. Instead you're interested in what number was associated
-with the clicked button. The event listeners module allows one to
-express that by supplying an array at the named event property. The
-first element in the array should be a function that will be invoked
-with the value in the second element once the event occurs.
-
-```javascript
-function clickHandler(number) { console.log('button ' + number + ' was clicked!'); }
-h('div', [
-  h('a', {on: {click: [clickHandler, 1]}}),
-  h('a', {on: {click: [clickHandler, 2]}}),
-  h('a', {on: {click: [clickHandler, 3]}}),
-]);
-```
-
-Each handler is called not only with the given arguments but also with the current event and vnode appended to the argument list. It also supports using multiple listeners per event by specifying an array of handlers:
-```javascript
-stopPropagation = function(ev) { ev.stopPropagation() }
-sendValue = function(func, ev, vnode) { func(vnode.elm.value) }
-
-h('a', { on:{ click:[[sendValue, console.log], stopPropagation] } });
-```
-
-Snabbdom allows swapping event handlers between renders. This happens without
-actually touching the event handlers attached to the DOM.
-
-Note, however, that **you should be careful when sharing event
-handlers between vnodes**, because of the technique this module uses
-to avoid re-binding event handlers to the DOM. (And in general,
-sharing data between vnodes is not guaranteed to work, because modules
-are allowed to mutate the given data).
-
-In particular, you should **not** do something like this:
-
-```javascript
-// Does not work
-var sharedHandler = {
-  change: function(e){ console.log('you chose: ' + e.target.value); }
-};
-h('div', [
-  h('input', {props: {type: 'radio', name: 'test', value: '0'},
-              on: sharedHandler}),
-  h('input', {props: {type: 'radio', name: 'test', value: '1'},
-              on: sharedHandler}),
-  h('input', {props: {type: 'radio', name: 'test', value: '2'},
-              on: sharedHandler})
-]);
-```
-
-For many such cases, you can use array-based handlers instead (described above).
-Alternatively, simply make sure each node is passed unique `on` values:
-
-```javascript
-// Works
-var sharedHandler = function(e){ console.log('you chose: ' + e.target.value); };
-h('div', [
-  h('input', {props: {type: 'radio', name: 'test', value: '0'},
-              on: {change: sharedHandler}}),
-  h('input', {props: {type: 'radio', name: 'test', value: '1'},
-              on: {change: sharedHandler}}),
-  h('input', {props: {type: 'radio', name: 'test', value: '2'},
-              on: {change: sharedHandler}})
-]);
-```
-
-## Helpers
-
-### SVG
-
-SVG just works when using the `h` function for creating virtual
-nodes. SVG elements are automatically created with the appropriate
-namespaces.
-
-```javascript
-var vnode = h('div', [
-  h('svg', {attrs: {width: 100, height: 100}}, [
-    h('circle', {attrs: {cx: 50, cy: 50, r: 40, stroke: 'green', 'stroke-width': 4, fill: 'yellow'}})
-  ])
-]);
-```
-
-See also the [SVG example](./examples/svg) and the [SVG Carousel example](./examples/carousel-svg/).
-
-#### Using Classes in SVG Elements
-
-Certain browsers (like IE <=11) [do not support `classList` property in SVG elements](http://caniuse.com/#feat=classlist).
-Hence, the _class_ module (which uses `classList` property internally) will not work for these browsers.
-
-The classes in selectors for SVG elements work fine from version 0.6.7.
-
-You can add dynamic classes to SVG elements for these cases by using the _attributes_ module and an Array as shown below:
-
-```js
-h('svg', [
-  h('text.underline', { // 'underline' is a selector class, remain unchanged between renders.
-      attrs: {
-        // 'active' and 'red' are dynamic classes, they can change between renders
-        // so we need to put them in the class attribute.
-        // (Normally we'd use the classModule, but it doesn't work inside SVG)
-        class: [isActive && "active", isColored && "red"].filter(Boolean).join(" ")
+  **/
+  let i: number, j: number, cbs = ({} as ModuleHooks);
+  const api: DOMAPI = htmlDomApi;
+
+  for (i = 0; i < hooks.length; ++i) {
+    cbs[hooks[i]] = [];
+    for (j = 0; j < modules.length; ++j) {
+      const hook = modules[j][hooks[i]]; // modules中定义的hook
+      if (hook !== undefined) {
+        (cbs[hooks[i]] as Array<any>).push(hook);
       }
-    },
-    'Hello World'
-  )
-])
-```
+    }
+  }
 
-### Thunks
+  return function patch(oldVnode: VNode | Element, vnode: VNode): VNode {
+    let i: number, elm: Node, parent: Node;
+    const insertedVnodeQueue: VNodeQueue = [];
+    // pre 前置回调函数执行
+    for (i = 0; i < cbs.pre.length; ++i) cbs.pre[i]();
 
-The `thunk` function takes a selector, a key for identifying a thunk,
-a function that returns a vnode and a variable amount of state
-parameters. If invoked, the render function will receive the state
-arguments.
+    // 为Element时
+    if (!isVnode(oldVnode)) {
+      oldVnode = emptyNodeAt(oldVnode);
+    }
 
-`thunk(selector, key, renderFn, [stateArguments])`
+    if (sameVnode(oldVnode, vnode)) {
+      // 当是相同Vnode时，patch更新（涉及到diff算法）
+      patchVnode(oldVnode, vnode, insertedVnodeQueue);
+    } else {
+      // 不相同的Vnode时，直接利用新的 Vnode 创建对应的真实 DOM 节点，然后移除旧的 Vnode 所代表的真实 DOM 节点
+      elm = oldVnode.elm as Node;
+      parent = api.parentNode(elm);
 
-The `key` is optional. It should be supplied when the `selector` is
-not unique among the thunks siblings. This ensures that the thunk is
-always matched correctly when diffing.
+      // 根据 vnode 创建新的真实 DOM 节点，绑定到vnode.elm上。
+      // create事件回调在此发生
+      createElm(vnode, insertedVnodeQueue);
 
-Thunks are an optimization strategy that can be used when one is
-dealing with immutable data.
+      if (parent !== null) {
+        // 插入并替换原有 DOM 节点
+        api.insertBefore(parent, vnode.elm as Node, api.nextSibling(elm));
+        removeVnodes(parent, [oldVnode], 0, 0); // destroy事件回调再此发生
+      }
+    }
 
-Consider a simple function for creating a virtual node based on a number.
+    for (i = 0; i < insertedVnodeQueue.length; ++i) {
+      (((insertedVnodeQueue[i].data as VNodeData).hook as Hooks).insert as any)(insertedVnodeQueue[i]);
+    }
 
-```js
-function numberView(n) {
-  return h('div', 'Number is: ' + n);
+    // post 后置回调都执行
+    for (i = 0; i < cbs.post.length; ++i) cbs.post[i]();
+    return vnode;
+  };
 }
 ```
 
-The view depends only on `n`. This means that if `n` is unchanged,
-then creating the virtual DOM node and patching it against the old
-vnode is wasteful. To avoid the overhead we can use the `thunk` helper
-function.
+`虚拟dom的diff有个前提：diff只发生在相同的层级。`基于这个假设，我们可以 按照层级分解树，这大大简化了复杂度，大到接近 O(n) 的复杂度。
 
-```js
-function render(state) {
-  return thunk('num', numberView, [state.number]);
-}
+当两个vnode相同（key和sel没变），对比两个vnode进行patch更新。当是简单节点（如文本节点时）或者VNode新增删除时，只需要实现对应DOM操作即可。当需要两个VNode对比时，就会复杂的多。
+
+``` js
+// 更新dom
+// 主要是根据vnode，去改变oldVnode对应的DOM，最大程度复用已存在的DOM
+function patchVnode(oldVnode: VNode, vnode: VNode, insertedVnodeQueue: VNodeQueue) {
+    // 保存旧 vnode 的 DOM 引用
+    const elm = vnode.elm = (oldVnode.elm as Node);
+    let oldCh = oldVnode.children;
+    let ch = vnode.children;
+
+    // 如果新的 vnode 节点不是一个文本节点
+    if (isUndef(vnode.text)) {
+      // 如果两个 vnode 节点都有子节点
+      if (isDef(oldCh) && isDef(ch)) {
+        // @important 并且子节点不一样，开始 diff
+        if (oldCh !== ch) updateChildren(elm, oldCh as Array<VNode>, ch as Array<VNode>, insertedVnodeQueue);
+      } else if (isDef(ch)) {
+        // 如果只有新的 vnode 有子节点，设置旧的 vnode 的内容为空
+        if (isDef(oldVnode.text)) api.setTextContent(elm, '');
+        // 添加插入新的 DOM 节点
+        addVnodes(elm, null, ch as Array<VNode>, 0, (ch as Array<VNode>).length - 1, insertedVnodeQueue);
+      } else if (isDef(oldCh)) {
+        // 如果只有旧的 vnode 有子节点，则移除所有子节点
+        removeVnodes(elm, oldCh as Array<VNode>, 0, (oldCh as Array<VNode>).length - 1);
+      } else if (isDef(oldVnode.text)) {
+        // 如果旧 vnode 是个文本节点，并且新 vnode 也没有子节点，则清空旧 vnode 的内容
+        api.setTextContent(elm, '');
+      }
+    } else if (oldVnode.text !== vnode.text) {
+      // 如果新的 vnode 节点是文本节点，如果文本内容和旧 vnode 不一样则设置新的值
+      api.setTextContent(elm, vnode.text as string);
+    }
+  }
 ```
 
-Instead of actually invoking the `numberView` function this will only
-place a dummy vnode in the virtual tree. When Snabbdom patches this
-dummy vnode against a previous vnode, it will compare the value of
-`n`. If `n` is unchanged it will simply reuse the old vnode. This
-avoids recreating the number view and the diff process altogether.
+对于 children （数组）的比较，因为同层是很可能有移动的，顺序比较会无法最大化复用已有的 DOM。所以`snabbdom的vnode有 key 字断，用来追踪这种顺序变动。`
 
-The view function here is only an example. In practice thunks are only
-relevant if you are rendering a complicated view that takes
-significant computational time to generate.
+最复杂的是两个vnode相同（key和sel相同），同时两者的子节点children不一样，这也是现实场景中最常出现的情况。snabbdom最核心的dom diff算法在`updateChildren`方法中。
 
-## Virtual Node
-**Properties**
- - [sel](#sel--string)
- - [data](#data--object)
- - [children](#children--array)
- - [text](#text--string)
- - [elm](#elm--element)
- - [key](#key--string--number)
+``` js
+function updateChildren(parentElm, oldCh, newCh, insertedVnodeQueue) {
+  let oldStartIdx = 0, newStartIdx = 0
+  let oldEndIdx = oldCh.length - 1
+  let oldStartVnode = oldCh[0]
+  let oldEndVnode = oldCh[oldEndIdx]
+  let newEndIdx = newCh.length - 1
+  let newStartVnode = newCh[0]
+  let newEndVnode = newCh[newEndIdx]
+  let oldKeyToIdx
+  let idxInOld
+  let elmToMove
+  let before
 
-#### sel : String
+  // 遍历 oldCh 和 newCh 来比较和更新
+  while (oldStartIdx <= oldEndIdx && newStartIdx <= newEndIdx) {
+    // 1⃣️ 首先检查 4 种情况，保证 oldStart/oldEnd/newStart/newEnd
+    // 这 4 个 vnode 非空，左侧的 vnode 为空就右移下标，右侧的 vnode 为空就左移 下标。
+    if (oldStartVnode == null) {
+      oldStartVnode = oldCh[++oldStartIdx]
+    } else if (oldEndVnode == null) {
+      oldEndVnode = oldCh[--oldEndIdx]
+    } else if (newStartVnode == null) {
+      newStartVnode = newCh[++newStartIdx]
+    } else if (newEndVnode == null) {
+      newEndVnode = newCh[--newEndIdx]
+    }
+    /**
+     * 2⃣️ 然后 oldStartVnode/oldEndVnode/newStartVnode/newEndVnode 两两比较，
+     * 对有相同 vnode 的 4 种情况执行对应的 patch 逻辑。
+     * - 如果同 start 或同 end 的两个 vnode 是相同的（情况 1 和 2），
+     *   说明不用移动实际 dom，直接更新 dom 属性／children 即可；
+     * - 如果 start 和 end 两个 vnode 相同（情况 3 和 4），
+     *   那说明发生了 vnode 的移动，同理我们也要移动 dom。
+     */
+    // 1. 如果 oldStartVnode 和 newStartVnode 相同（key相同），执行 patch
+    else if (isSameVnode(oldStartVnode, newStartVnode)) {
+      // 不需要移动 dom
+      patchVnode(oldStartVnode, newStartVnode, insertedVnodeQueue)
+      oldStartVnode = oldCh[++oldStartIdx]
+      newStartVnode = newCh[++newStartIdx]
+    }
+    // 2. 如果 oldEndVnode 和 newEndVnode 相同，执行 patch
+    else if (isSameVnode(oldEndVnode, newEndVnode)) {
+      // 不需要移动 dom
+      patchVnode(oldEndVnode, newEndVnode, insertedVnodeQueue)
+      oldEndVnode = oldCh[--oldEndIdx]
+      newEndVnode = newCh[--newEndIdx]
+    }
+    // 3. 如果 oldStartVnode 和 newEndVnode 相同，执行 patch
+    else if (isSameVnode(oldStartVnode, newEndVnode)) {
+      patchVnode(oldStartVnode, newEndVnode, insertedVnodeQueue)
+      // 把获得更新后的 (oldStartVnode/newEndVnode) 的 dom 右移，移动到
+      // oldEndVnode 对应的 dom 的右边。为什么这么右移？
+      // （1）oldStartVnode 和 newEndVnode 相同，显然是 vnode 右移了。
+      // （2）若 while 循环刚开始，那移到 oldEndVnode.elm 右边就是最右边，是合理的；
+      // （3）若循环不是刚开始，因为比较过程是两头向中间，那么两头的 dom 的位置已经是
+      //     合理的了，移动到 oldEndVnode.elm 右边是正确的位置；
+      // （4）记住，oldVnode 和 vnode 是相同的才 patch，且 oldVnode 自己对应的 dom
+      //     总是已经存在的，vnode 的 dom 是不存在的，直接复用 oldVnode 对应的 dom。
+      api.insertBefore(parentElm, oldStartVnode.elm, api.nextSibling(oldEndVnode.elm))
+      oldStartVnode = oldCh[++oldStartIdx]
+      newEndVnode = newCh[--newEndIdx]
+    }
+    // 4. 如果 oldEndVnode 和 newStartVnode 相同，执行 patch
+    else if (isSameVnode(oldEndVnode, newStartVnode)) {
+      patchVnode(oldEndVnode, newStartVnode, insertedVnodeQueue)
+      // 这里是左移更新后的 dom，原因参考上面的右移。
+      api.insertBefore(parentElm, oldEndVnode.elm, oldStartVnode.elm)
+      oldEndVnode = oldCh[--oldEndIdx]
+      newStartVnode = newCh[++newStartIdx]
+    }
 
-The `.sel` property of a virtual node is the CSS selector passed to
-[`h()`](#snabbdomh) during creation. For example: `h('div#container',
-{}, [...])` will create a a virtual node which has `div#container` as
-its `.sel` property.
+    // 3⃣️ 最后一种情况：4 个 vnode 都不相同，那么我们就要
+    // 1. 从 oldCh 数组建立 key --> index 的 map。
+    // 2. 只处理 newStartVnode （简化逻辑，有循环我们最终还是会处理到所有 vnode），
+    //    以它的 key 从上面的 map 里拿到 index；
+    // 3. 如果 index 存在，那么说明有对应的 old vnode，patch 就好了；
+    // 4. 如果 index 不存在，那么说明 newStartVnode 是全新的 vnode，直接
+    //    创建对应的 dom 并插入。
+    else {
+      // 如果 oldKeyToIdx 不存在，创建 old children 中 vnode 的 key 到 index 的
+      // 映射，方便我们之后通过 key 去拿下标。
+      if (oldKeyToIdx === undefined) {
+        oldKeyToIdx = createKeyToOldIdx(oldCh, oldStartIdx, oldEndIdx)
+      }
+      // 尝试通过 newStartVnode 的 key 去拿下标
+      idxInOld = oldKeyToIdx[newStartVnode.key]
+      // 下标不存在，说明 newStartVnode 是全新的 vnode。
+      if (idxInOld == null) {
+        // 那么为 newStartVnode 创建 dom 并插入到 oldStartVnode.elm 的前面。
+        api.insertBefore(parentElm, createElm(newStartVnode, insertedVnodeQueue), oldStartVnode.elm)
+        newStartVnode = newCh[++newStartIdx]
+      }
+      // 下标存在，说明 old children 中有相同 key 的 vnode，
+      else {
+        elmToMove = oldCh[idxInOld]
+        // 如果 type 不同，没办法，只能创建新 dom；
+        if (elmToMove.type !== newStartVnode.type) {
+          api.insertBefore(parentElm, createElm(newStartVnode, insertedVnodeQueue), oldStartVnode.elm)
+        }
+        // type 相同（且key相同），那么说明是相同的 vnode，执行 patch。
+        else {
+          patchVnode(elmToMove, newStartVnode, insertedVnodeQueue)
+          oldCh[idxInOld] = undefined
+          api.insertBefore(parentElm, elmToMove.elm, oldStartVnode.elm)
+        }
+        newStartVnode = newCh[++newStartIdx]
+      }
+    }
+  }
 
-#### data : Object
-
-The `.data` property of a virtual node is the place to add information
-for [modules](#modules-documentation) to access and manipulate the
-real DOM element when it is created; Add styles, CSS classes,
-attributes, etc.
-
-The data object is the (optional) second parameter to [`h()`](#snabbdomh)
-
-For example `h('div', {props: {className: 'container'}}, [...])` will produce a virtual node with
-```js
-{
-  "props": {
-    className: "container"
+  // 上面的循环结束后（循环条件有两个），处理可能的未处理到的 vnode。
+  // 如果是 new vnodes 里有未处理的（oldStartIdx > oldEndIdx
+  // 说明 old vnodes 先处理完毕）
+  if (oldStartIdx > oldEndIdx) {
+    before = newCh[newEndIdx+1] == null ? null : newCh[newEndIdx+1].elm
+    addVnodes(parentElm, before, newCh, newStartIdx, newEndIdx, insertedVnodeQueue)
+  }
+  // 相反，如果 old vnodes 有未处理的，删除 （为处理 vnodes 对应的） 多余的 dom。
+  else if (newStartIdx > newEndIdx) {
+    removeVnodes(parentElm, oldCh, oldStartIdx, oldEndIdx)
   }
 }
 ```
-as its `.data` object.
 
-#### children : Array<vnode>
+## 总结
 
-The `.children` property of a virtual node is the third (optional)
-parameter to [`h()`](#snabbdomh) during creation. `.children` is
-simply an Array of virtual nodes that should be added as children of
-the parent DOM node upon creation.
+两个假设：
+1. 相同的节点类型，有相同DOM结构；不同的节点类型，不同DOM结构。
+2. 同一层次的节点组，有唯一的key标识。
 
-For example `h('div', {}, [ h('h1', {}, 'Hello, World') ])` will
-create a virtual node with
-
-```js
-[
- {
-   sel: 'h1',
-   data: {},
-   children: undefined,
-   text: 'Hello, World',
-   elm: Element,
-   key: undefined,
- }
-]
-```
-
-as its `.children` property.
-
-#### text : string
-
-The `.text` property is created when a virtual node is created with
-only a single child that possesses text and only requires
-`document.createTextNode()` to be used.
-
-For example: `h('h1', {}, 'Hello')` will create a virtual node with
-`Hello` as its `.text` property.
-
-#### elm : Element
-
-The `.elm` property of a virtual node is a pointer to the real DOM
-node created by snabbdom. This property is very useful to do
-calculations in [hooks](#hooks) as well as
-[modules](#modules-documentation).
-
-#### key : string | number
-
-The `.key` property is created when a key is provided inside of your
-[`.data`](#data--object) object. The `.key` property is used to keep
-pointers to DOM nodes that existed previously to avoid recreating them
-if it is unnecessary. This is very useful for things like list
-reordering. A key must be either a string or a number to allow for
-proper lookup as it is stored internally as a key/value pair inside of
-an object, where `.key` is the key and the value is the
-[`.elm`](#elm--element) property created.
-
-For example: `h('div', {key: 1}, [])` will create a virtual node
-object with a `.key` property with the value of `1`.
-
-
-## Structuring applications
-
-Snabbdom is a low-level virtual DOM library. It is unopinionated with
-regards to how you should structure your application.
-
-Here are some approaches to building applications with Snabbdom.
-
-* [functional-frontend-architecture](https://github.com/paldepind/functional-frontend-architecture) –
-  a repository containing several example applications that
-  demonstrates an architecture that uses Snabbdom.
-* [Cycle.js](https://cycle.js.org/) –
-  "A functional and reactive JavaScript framework for cleaner code"
-  uses Snabbdom
-* [Vue.js](http://vuejs.org/) use a fork of snabbdom.
-* [scheme-todomvc](https://github.com/amirouche/scheme-todomvc/) build
-  redux-like architecture on top of snabbdom bindings.
-* [kaiju](https://github.com/AlexGalays/kaiju) -
-  Stateful components and observables on top of snabbdom
-* [Tweed](https://tweedjs.github.io) –
-  An Object Oriented approach to reactive interfaces.
-* [Cyclow](http://cyclow.js.org) -
-  "A reactive frontend framework for JavaScript"
-  uses Snabbdom
-* [Tung](https://github.com/Reon90/tung) –
-  A JavaScript library for rendering html. Tung helps to divide html and JavaScript development.
-* [sprotty](https://github.com/theia-ide/sprotty) - "A web-based diagramming framework" uses Snabbdom.
-* [Mark Text](https://github.com/marktext/marktext) - "Realtime preview Markdown Editor" build on Snabbdom.
-* [puddles](https://github.com/flintinatux/puddles) - 
-  "Tiny vdom app framework. Pure Redux. No boilerplate." - Built with :heart: on Snabbdom.
-* [Backbone.VDOMView](https://github.com/jcbrand/backbone.vdomview) - A [Backbone](http://backbonejs.org/) View with VirtualDOM capability via Snabbdom.
-
-Be sure to share it if you're building an application in another way
-using Snabbdom.
-
-## Common errors
-
-```
-Uncaught NotFoundError: Failed to execute 'insertBefore' on 'Node':
-    The node before which the new node is to be inserted is not a child of this node.
-```
-The reason for this error is reusing of vnodes between patches (see code example), snabbdom stores actual dom nodes inside the virtual dom nodes passed to it as performance improvement, so reusing nodes between patches is not supported.
-```js
-var sharedNode = h('div', {}, 'Selected');
-var vnode1 = h('div', [
-  h('div', {}, ['One']),
-  h('div', {}, ['Two']),
-  h('div', {}, [sharedNode]),
-]);
-var vnode2 = h('div', [
-  h('div', {}, ['One']),
-  h('div', {}, [sharedNode]),
-  h('div', {}, ['Three']),
-]);
-patch(container, vnode1);
-patch(vnode1, vnode2);
-```
-You can fix this issue by creating a shallow copy of the object (here with object spread syntax):
-```js
-var vnode2 = h('div', [
-  h('div', {}, ['One']),
-  h('div', {}, [{ ...sharedNode }]),
-  h('div', {}, ['Three']),
-]);
-```
-Another solution would be to wrap shared vnodes in a factory function:
-```js
-var sharedNode = () => h('div', {}, 'Selected');
-var vnode1 = h('div', [
-  h('div', {}, ['One']),
-  h('div', {}, ['Two']),
-  h('div', {}, [sharedNode()]),
-]);
-```
+流程：
+* 新旧两个VNode对比，如果两个相同(vnode1.key === vnode2.key && vnode1.sel === vnode2.sel)，vue中（a.key === b.key && a.tag === b.tag）
+  * 如果是文字节点，更新文字即可
+  * 非文字节点，判断子节点
+    * 如果新老VNode都有子节点，需要使用双向链表处理两个Childrens
+    * 如果只有新的子节点，增加子节点DOM
+    * 如果只有旧的子节点，删除老的子节点
+* 如果不同，增加新DOM，去除老DOM。
